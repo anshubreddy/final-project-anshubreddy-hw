@@ -17,8 +17,32 @@
 #define MAX_BUFF_LEN       8    // Maximum buffer length for I2C data transfer
 #define MAX_STR_LEN       15    // Maximum string length for device path
 
+// Calibration Parameters
+uint16_t dig_T1;
+int16_t dig_T2;
+int16_t dig_T3;
+uint16_t dig_P1;
+int16_t dig_P2;
+int16_t dig_P3;
+int16_t dig_P4;
+int16_t dig_P5;
+int16_t dig_P6;
+int16_t dig_P7;
+int16_t dig_P8;
+int16_t dig_P9;
+uint8_t dig_H1;
+int16_t dig_H2;
+uint8_t dig_H3;
+int16_t dig_H4;
+int16_t dig_H5;
+int8_t dig_H6;
+
 // Function Prototypes
 static int init_bme280_sensor(uint8_t i2c_node);
+static void readCalibrationParams(int file_id);
+static float compensateTemperature(int32_t adc_T, int32_t *t_fine);
+static float compensateHumidity(int32_t adc_H, int32_t t_fine);
+static float compensatePressure(int32_t adc_P, int32_t t_fine);
 static void read_bme280_sensor(int file_id, float *temperature, float *humidity, float *pressure);
 
 // Initializes BME280 sensor by configuring I2C slave address
@@ -81,6 +105,95 @@ exit:
     return file_fd;
 }
 
+// Reads calibration parameters from BME280 sensor
+static void readCalibrationParams(int file_id)
+{
+    char reg[1] = {0x88}; // Calibration parameter start address
+    char cal_data[26]; // Buffer to store calibration data
+
+    // Write register address
+    write(file_id, reg, 1);
+
+    // Read calibration data
+    read(file_id, cal_data, 24);
+
+    // Parse temperature and pressure calibration data
+    dig_T1 = (cal_data[1] << 8) | cal_data[0];
+    dig_T2 = (cal_data[3] << 8) | cal_data[2];
+    dig_T3 = (cal_data[5] << 8) | cal_data[4];
+    dig_P1 = (cal_data[7] << 8) | cal_data[6];
+    dig_P2 = (cal_data[9] << 8) | cal_data[8];
+    dig_P3 = (cal_data[11] << 8) | cal_data[10];
+    dig_P4 = (cal_data[13] << 8) | cal_data[12];
+    dig_P5 = (cal_data[15] << 8) | cal_data[14];
+    dig_P6 = (cal_data[17] << 8) | cal_data[16];
+    dig_P7 = (cal_data[19] << 8) | cal_data[18];
+    dig_P8 = (cal_data[21] << 8) | cal_data[20];
+    dig_P9 = (cal_data[23] << 8) | cal_data[22];
+    dig_H1 = cal_data[25];
+
+    // Read humidity calibration parameters
+    reg[0] = 0xE1;
+    write(file_id, reg, 1);
+    read(file_id, cal_data, 7);
+
+    dig_H2 = (cal_data[1] << 8) | cal_data[0];
+    dig_H3 = cal_data[2];
+    dig_H4 = (cal_data[3] << 4) | (cal_data[4] & 0x0F);
+    dig_H5 = (cal_data[5] << 4) | (cal_data[4] >> 4);
+    dig_H6 = cal_data[6];
+}
+
+// Compensates raw temperature data to actual temperature
+static float compensateTemperature(int32_t adc_T, int32_t *t_fine)
+{
+    int32_t var1, var2;
+    var1 = ((((adc_T >> 3) - ((int32_t)dig_T1 << 1))) * ((int32_t)dig_T2)) >> 11;
+    var2 = (((((adc_T >> 4) - ((int32_t)dig_T1)) * ((adc_T >> 4) - ((int32_t)dig_T1))) >> 12) *
+            ((int32_t)dig_T3)) >> 14;
+    *t_fine = var1 + var2;
+    return (*t_fine * 5 + 128) >> 8;
+}
+
+// Compensates raw humidity data to actual humidity
+static float compensateHumidity(int32_t adc_H, int32_t t_fine)
+{
+    int32_t v_x1_u32r;
+
+    v_x1_u32r = (t_fine - ((int32_t)76800));
+    v_x1_u32r = (((((adc_H << 14) - (((int32_t)dig_H4) << 20) - (((int32_t)dig_H5) * v_x1_u32r)) +
+                   ((int32_t)16384)) >> 15) * (((((((v_x1_u32r * ((int32_t)dig_H6)) >> 10) *
+                                                (((v_x1_u32r * ((int32_t)dig_H3)) >> 11) +
+                                                 ((int32_t)32768))) >> 10) + ((int32_t)2097152)) *
+                                             ((int32_t)dig_H2) + 8192) >> 14));
+    v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((int32_t)dig_H1)) >> 4));
+    v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
+    v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
+    return (v_x1_u32r >> 12) / 1024.0;
+}
+
+// Compensates raw pressure data to actual pressure
+static float compensatePressure(int32_t adc_P, int32_t t_fine)
+{
+    int64_t var1, var2, p;
+    var1 = ((int64_t)t_fine) - 128000;
+    var2 = var1 * var1 * (int64_t)dig_P6;
+    var2 = var2 + ((var1 * (int64_t)dig_P5) << 17);
+    var2 = var2 + (((int64_t)dig_P4) << 35);
+    var1 = ((var1 * var1 * (int64_t)dig_P3) >> 8) + ((var1 * (int64_t)dig_P2) << 12);
+    var1 = (((((int64_t)1) << 47) + var1)) * ((int64_t)dig_P1) >> 33;
+    if (var1 == 0)
+    {
+        return 0; // Avoid division by zero
+    }
+    p = 1048576 - adc_P;
+    p = (((p << 31) - var2) * 3125) / var1;
+    var1 = (((int64_t)dig_P9) * (p >> 13) * (p >> 13)) >> 25;
+    var2 = (((int64_t)dig_P8) * p) >> 19;
+    p = ((p + var1 + var2) >> 8) + (((int64_t)dig_P7) << 4);
+    return (float)p / 256.0;
+}
+
 // Reads temperature, humidity, and pressure values from BME280 sensor
 static void read_bme280_sensor(int file_id, float *temperature, float *humidity, float *pressure)
 {
@@ -110,17 +223,15 @@ static void read_bme280_sensor(int file_id, float *temperature, float *humidity,
     printf("\n");
 
     // Convert the data
-    int adc_T = ((data[3] * 65536) + (data[4] * 256) + (data[5] & 0xF0)) / 16;
-    int adc_H = (data[6] * 256) + data[7];
-    float var1, T;
+    int32_t adc_T = ((data[3] << 12) | (data[4] << 4) | (data[5] >> 4));
+    int32_t adc_P = ((data[0] >> 12) | (data[1] << 4) | (data[2] >> 4));
+    int32_t adc_H = (data[6] << 8) | data[7];
+    int32_t t_fine = 0;
 
-    var1 = (((float)adc_T) / 16384.0 - ((float)415) / 1024.0) * 175.72;
-    T = var1;
-
-    // Output data to screen
-    *temperature = T;
-    *humidity = ((float)adc_H / 1024.0) * 100.0;
-    *pressure = ((data[0] << 12) + (data[1] << 4) + (data[2] >> 4)) / 100.0;
+    // Compensate the data
+    *temperature = compensateTemperature(adc_T, &t_fine) / 100.0;
+    *humidity = compensateHumidity(adc_H, t_fine);
+    *pressure = compensatePressure(adc_P, t_fine) / 100.0;
 
     // Debug print statements
     printf("Debug: Temperature = %.2f°C, Humidity: %.2f%%, Pressure: %.2f hPa\n", *temperature, *humidity, *pressure);
@@ -145,6 +256,8 @@ int main(int argc, char *argv[])
         syslog(LOG_ERR, "Error initializing i2c device");
         return FAIL;
     }
+
+    readCalibrationParams(file_id);
 
     while (true)
     {

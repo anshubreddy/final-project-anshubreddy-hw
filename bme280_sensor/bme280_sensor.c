@@ -77,7 +77,7 @@ static int init_bme280_sensor(uint8_t i2c_node)
         file_fd = -1;
         goto exit;
     }
-    printf("Debug: Humidity config written\n");
+    printf("Humidity config written\n");
 
     config[0] = 0xF4; // Temperature and pressure oversampling rate = 1, mode = normal
     config[1] = 0x27;
@@ -88,7 +88,7 @@ static int init_bme280_sensor(uint8_t i2c_node)
         file_fd = -1;
         goto exit;
     }
-    printf("Debug: Temp/Pressure config written\n");
+    printf("Temp/Pressure config written\n");
 
     config[0] = 0xF5; // Standby time = 1000ms
     config[1] = 0xA0;
@@ -99,7 +99,7 @@ static int init_bme280_sensor(uint8_t i2c_node)
         file_fd = -1;
         goto exit;
     }
-    printf("Debug: Standby time config written\n");
+    printf("Standby time config written\n");
 
 exit:
     return file_fd;
@@ -215,12 +215,14 @@ static void read_bme280_sensor(int file_id, float *temperature, float *humidity,
     }
 
     // Debug: Print raw data
+    /*
     printf("Debug: Raw data=");
     for (int i = 0; i < MAX_BUFF_LEN; i++)
     {
         printf(" 0x%02x", data[i]);
     }
     printf("\n");
+    */
 
     // Convert the data
     int32_t adc_T = ((data[3] << 12) | (data[4] << 4) | (data[5] >> 4));
@@ -233,8 +235,8 @@ static void read_bme280_sensor(int file_id, float *temperature, float *humidity,
     *humidity = compensateHumidity(adc_H, t_fine);
     *pressure = compensatePressure(adc_P, t_fine) / 100.0;
 
-    // Debug print statements
-    printf("Debug: Temperature = %.2f°C, Humidity: %.2f%%, Pressure: %.2f hPa\n", *temperature, *humidity, *pressure);
+    // Display print statements
+    printf("Temperature = %.2f°C, Humidity: %.2f%%, Pressure: %.2f hPa\n", *temperature, *humidity, *pressure);
 }
 
 // Main function to initialize and read from BME280 sensor

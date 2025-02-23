@@ -2,13 +2,13 @@ CC ?= $(CROSS_COMPILE)gcc
 CFLAGS ?= -Wall -Werror -g
 LDFLAGS ?=
 
-all: zigbee_send
+all: zigbee_receive
 
-zigbee_send: zigbee_send.o
+zigbee_receive: zigbee_receive.o
 	$(CC) $^ $(LDFLAGS) -o $@
 
-zigbee_send.o: zigbee_send.c
+zigbee_receive.o: zigbee_receive.c
 	$(CC) -c $^ $(CFLAGS) -o $@
 
 clean:
-	rm -f *.o zigbee_send
+	rm -f *.o zigbee_receive

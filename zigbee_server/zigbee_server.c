@@ -1,21 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
 
-void setup_serial(int fd) {
+static void setup_serial(int fd)
+{
     struct termios tty;
-
-    if (tcgetattr(fd, &tty) != 0) {
+    if (tcgetattr(fd, &tty) != 0)
+    {
         perror("tcgetattr");
         exit(EXIT_FAILURE);
     }
 
     cfsetospeed(&tty, B9600);
     cfsetispeed(&tty, B9600);
-
     tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
     tty.c_iflag &= ~IGNBRK;
     tty.c_lflag = 0;
@@ -28,34 +28,40 @@ void setup_serial(int fd) {
     tty.c_cflag &= ~CSTOPB;
     tty.c_cflag &= ~CRTSCTS;
 
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+    if (tcsetattr(fd, TCSANOW, &tty) != 0)
+    {
         perror("tcsetattr");
         exit(EXIT_FAILURE);
     }
 }
 
-int main() {
+int main()
+{
     const char *portname = "/dev/ttyUSB0";
     int fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
-    if (fd < 0) {
+
+    if (fd < 0)
+    {
         perror("open");
         return EXIT_FAILURE;
     }
 
     setup_serial(fd);
+    char buf[100];
 
-    // Simulate reading from BME280 sensor
-    const char *sensor_data = "Temp: 24.5C, Hum: 60%";
-
-    // Send sensor data over Zigbee
-    ssize_t bytes_written = write(fd, sensor_data, strlen(sensor_data));
-    if (bytes_written == -1)
+    while (true)
     {
-        perror("write");
-    }
-    else
-    {
-        printf("Sent: %s\n", sensor_data);
+        int n = read(fd, buf, sizeof(buf) - 1);
+        if (n > 0)
+        {
+            buf[n] = '\0';
+            printf("Received: %s", buf); // Display on server console
+        }
+        else if (n < 0)
+        {
+            perror("read");
+            break;
+        }
     }
 
     close(fd);

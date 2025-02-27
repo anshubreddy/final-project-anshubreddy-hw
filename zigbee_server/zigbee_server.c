@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
+#include <string.h>
 
 static void setup_serial(int fd)
 {
@@ -47,7 +48,9 @@ int main()
     }
 
     setup_serial(fd);
-    char buf[100];
+    char buf[256];
+    char message[256] = {0};
+    int msg_index = 0;
 
     while (true)
     {
@@ -55,7 +58,31 @@ int main()
         if (n > 0)
         {
             buf[n] = '\0';
-            printf("Received: %s", buf); // Display on server console
+
+            // Append incoming data to the message buffer
+            strncat(message, buf, n);
+            msg_index += n;
+
+            // Process complete messages ending with '\n'
+            char *newline_pos = strchr(message, '\n');
+            while (newline_pos != NULL)
+            {
+                // Extract the complete message
+                size_t message_len = newline_pos - message + 1;
+                char complete_message[256];
+                strncpy(complete_message, message, message_len);
+                complete_message[message_len] = '\0';
+
+                // Print the formatted sensor data
+                printf("%s", complete_message);
+
+                // Shift remaining data in the buffer
+                memmove(message, newline_pos + 1, msg_index - message_len);
+                msg_index -= message_len;
+
+                // Check for another complete message
+                newline_pos = strchr(message, '\n');
+            }
         }
         else if (n < 0)
         {
